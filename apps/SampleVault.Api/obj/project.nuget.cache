@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "cVr2VnCCnvM=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\varsn\\Documents\\SampleVault\\apps\\SampleVault.Api\\SampleVault.Api.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\varsn\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.11\\microsoft.aspnetcore.openapi.10.0.11.nupkg.sha512",
+    "C:\\Users\\varsn\\.nuget\\packages\\microsoft.openapi\\2.7.5\\microsoft.openapi.2.7.5.nupkg.sha512"
+  ],
+  "logs": []
+}

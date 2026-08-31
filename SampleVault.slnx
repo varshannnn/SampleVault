@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/apps/">
+    <Project Path="apps/SampleVault.Api/SampleVault.Api.csproj" />
+  </Folder>
+</Solution>
