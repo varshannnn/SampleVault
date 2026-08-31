@@ -1,0 +1,15 @@
+# .NET build output
+bin/
+obj/
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+
+# VS Code
+.vscode/
+
+# Node later
+node_modules/
+dist/
