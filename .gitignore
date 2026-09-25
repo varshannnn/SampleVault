@@ -10,10 +10,12 @@ obj/
 # VS Code
 .vscode/
 
-# Node later
+# Frontend
 node_modules/
 dist/
 
+# Generated / private audio
+renders/
+temp-renders/
 rack-assets/
-
 rack-cache/
