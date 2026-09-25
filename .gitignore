@@ -19,3 +19,9 @@ renders/
 temp-renders/
 rack-assets/
 rack-cache/
+
+
+build/
+.vs/
+out/
+CMakeUserPresets.json

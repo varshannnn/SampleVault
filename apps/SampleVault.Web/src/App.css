@@ -2516,3 +2516,39 @@
 .lab-actions {
   flex-wrap: wrap;
 }
+
+/* =========================================================
+   Melodic preset bar
+   ========================================================= */
+
+.melodic-preset-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+
+  padding: 7px 10px;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.melodic-preset-bar select {
+  min-width: 155px;
+}
+
+.melodic-preset-bar input {
+  width: 170px;
+  min-width: 110px;
+}
+
+.melodic-preset-bar button,
+.melodic-preset-bar input,
+.melodic-preset-bar select {
+  min-height: 30px;
+}
+
+.melodic-preset-status {
+  margin-left: 4px;
+  font-size: 0.72rem;
+  opacity: 0.7;
+}

@@ -20,7 +20,7 @@ public sealed class AudioSourceRef
 
     /// <summary>
     /// For externalFile this may be absolute.
-    /// For managedAsset this should be relative to the SampleVault root,
+    /// For managedAsset this is relative to the SampleVault root,
     /// e.g. "Assets/9b0....wav".
     /// </summary>
     public string Path { get; set; } = string.Empty;
@@ -60,6 +60,14 @@ public sealed class MelodicPresetFile
         DateTime.UtcNow;
 
     public AudioSourceRef Audio { get; set; } = new();
+
+    /*
+      Display metadata is stored in the preset so the VST and
+      desktop app do not need SQLite just to show the sound.
+    */
+    public string FileName { get; set; } = string.Empty;
+    public double DurationSeconds { get; set; }
+    public List<string> Tags { get; set; } = [];
 
     public int RootMidiNote { get; set; } = 60;
 

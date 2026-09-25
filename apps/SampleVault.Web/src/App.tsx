@@ -471,6 +471,9 @@ function App() {
       sourceKind:
         "library",
 
+      sampleId:
+        sample.id,
+
       tempId:
         null,
 
@@ -1518,9 +1521,27 @@ function App() {
   ) {
     return (
       <MelodicSampler
+        key={
+          melodicSamplerSound.sourceId
+        }
         sound={
           melodicSamplerSound
         }
+        onLoadPreset={(
+          loadedSound
+        ) => {
+          cleanupTemporaryMelodicSound(
+            melodicSamplerSound
+          );
+
+          setMelodicSamplerSound(
+            loadedSound
+          );
+
+          setMelodicReturnToLab(
+            false
+          );
+        }}
         onBack={() => {
           cleanupTemporaryMelodicSound(
             melodicSamplerSound

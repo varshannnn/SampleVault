@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SampleVault.Api.Data;
 using SampleVault.Api.Models;
+using SampleVault.Api.Presets;
 using SampleVault.Api.Services;
 
 namespace SampleVault.Api.Controllers;
@@ -16,17 +17,33 @@ public class DrumRackPresetsController
     private readonly AudioRenderService
         _audioRenderService;
 
+    private readonly DrumRackPresetExporter
+        _presetExporter;
+
+    private readonly ILogger<
+        DrumRackPresetsController>
+        _logger;
+
     private readonly string
         _rackAssetsFolder;
 
     public DrumRackPresetsController(
         SampleVaultDbContext db,
         AudioRenderService audioRenderService,
+        DrumRackPresetExporter presetExporter,
+        ILogger<DrumRackPresetsController> logger,
         IWebHostEnvironment environment)
     {
         _db = db;
+
         _audioRenderService =
             audioRenderService;
+
+        _presetExporter =
+            presetExporter;
+
+        _logger =
+            logger;
 
         _rackAssetsFolder =
             Path.Combine(
@@ -284,6 +301,14 @@ public class DrumRackPresetsController
             new List<
                 DrumRackPresetSlot>();
 
+        /*
+          Once EF has saved, the new rack-assets are part of the
+          live SQLite preset. Do not delete those files merely
+          because the secondary VST export happens to fail.
+        */
+        bool databaseSaved =
+            false;
+
         try
         {
             foreach (
@@ -527,6 +552,45 @@ public class DrumRackPresetsController
             await _db
                 .SaveChangesAsync();
 
+            databaseSaved =
+                true;
+
+            /*
+              STEP 2 OF THE VST MIGRATION:
+              dual-write a portable preset alongside SQLite.
+
+              Export failure must NOT break the current app or
+              invalidate the SQLite preset. We log it and report
+              the status in the response so it is diagnosable.
+            */
+            string? vstPresetPath =
+                null;
+
+            string? vstExportWarning =
+                null;
+
+            try
+            {
+                vstPresetPath =
+                    await _presetExporter
+                        .ExportAsync(
+                            preset);
+            }
+            catch (Exception exportError)
+            {
+                vstExportWarning =
+                    exportError.Message;
+
+                _logger.LogError(
+                    exportError,
+                    "Drum Rack preset {PresetId} saved to SQLite but could not be exported for VST use.",
+                    preset.Id);
+            }
+
+            /*
+              The new SQLite preset and VST export no longer need
+              the old private rack-assets.
+            */
             foreach (
                 string oldAssetPath
                 in oldAssetPaths)
@@ -541,21 +605,36 @@ public class DrumRackPresetsController
                 preset.Name,
                 SlotCount =
                     preset.Slots.Count,
-                preset.UpdatedAt
+                preset.UpdatedAt,
+
+                VstExported =
+                    vstPresetPath is not null,
+
+                VstPresetPath =
+                    vstPresetPath,
+
+                VstExportWarning =
+                    vstExportWarning
             });
         }
         catch
         {
             /*
-              Do not leave newly copied private
-              rack assets behind if saving fails.
+              If SQLite never saved, the newly copied API-local
+              rack assets are safe to clean up.
+
+              If SQLite DID save, those files are now referenced
+              by the live preset and must remain.
             */
-            foreach (
-                string path
-                in newAssetPaths)
+            if (!databaseSaved)
             {
-                TryDeleteFile(
-                    path);
+                foreach (
+                    string path
+                    in newAssetPaths)
+                {
+                    TryDeleteFile(
+                        path);
+                }
             }
 
             throw;
@@ -600,6 +679,25 @@ public class DrumRackPresetsController
 
         await _db
             .SaveChangesAsync();
+
+        /*
+          Remove the portable preset JSON as well.
+          Managed audio assets are content-addressed and may be
+          shared, so they are intentionally retained for now.
+        */
+        try
+        {
+            _presetExporter
+                .DeleteExport(
+                    preset.Id);
+        }
+        catch (Exception exportError)
+        {
+            _logger.LogWarning(
+                exportError,
+                "SQLite Drum Rack preset {PresetId} was deleted, but its portable VST preset file could not be removed.",
+                preset.Id);
+        }
 
         foreach (
             string path

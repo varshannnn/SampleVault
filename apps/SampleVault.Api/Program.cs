@@ -34,7 +34,8 @@ builder.Services.AddSingleton<AudioRenderService>();
 
 builder.Services.AddSingleton<SampleVaultStoragePaths>();
 builder.Services.AddSingleton<PresetFileStore>();
-
+builder.Services.AddSingleton<DrumRackPresetExporter>();
+builder.Services.AddSingleton<ManagedAudioAssetStore>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 

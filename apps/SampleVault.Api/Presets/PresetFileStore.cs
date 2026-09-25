@@ -5,8 +5,7 @@ using SampleVault.Api.Infrastructure;
 namespace SampleVault.Api.Presets;
 
 /// <summary>
-/// Writes preset files atomically so the future VST never reads a
-/// half-written JSON file while the desktop app is saving.
+/// Atomic portable-preset storage shared by the app and future VST.
 /// </summary>
 public sealed class PresetFileStore
 {
@@ -17,6 +16,7 @@ public sealed class PresetFileStore
         {
             WriteIndented = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = true,
             DefaultIgnoreCondition =
                 JsonIgnoreCondition.WhenWritingNull
         };
@@ -65,6 +65,97 @@ public sealed class PresetFileStore
             filePath,
             preset,
             cancellationToken);
+    }
+
+    public async Task<MelodicPresetFile?>
+        LoadMelodicAsync(
+            Guid id,
+            CancellationToken cancellationToken = default)
+    {
+        string path = Path.Combine(
+            _paths.MelodicPresets,
+            $"{id:N}.json");
+
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        await using var stream =
+            new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 4096,
+                useAsync: true);
+
+        return await JsonSerializer
+            .DeserializeAsync<MelodicPresetFile>(
+                stream,
+                _jsonOptions,
+                cancellationToken);
+    }
+
+    public async Task<List<MelodicPresetFile>>
+        ListMelodicAsync(
+            CancellationToken cancellationToken = default)
+    {
+        Directory.CreateDirectory(
+            _paths.MelodicPresets);
+
+        var presets =
+            new List<MelodicPresetFile>();
+
+        foreach (
+            string path in
+            Directory.EnumerateFiles(
+                _paths.MelodicPresets,
+                "*.json"))
+        {
+            try
+            {
+                await using var stream =
+                    new FileStream(
+                        path,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read,
+                        bufferSize: 4096,
+                        useAsync: true);
+
+                MelodicPresetFile? preset =
+                    await JsonSerializer
+                        .DeserializeAsync<MelodicPresetFile>(
+                            stream,
+                            _jsonOptions,
+                            cancellationToken);
+
+                if (
+                    preset is not null &&
+                    preset.Type == "melodic")
+                {
+                    presets.Add(preset);
+                }
+            }
+            catch (JsonException)
+            {
+                /*
+                  One malformed preset should not make the whole
+                  preset browser unusable. We can surface corrupt
+                  files more explicitly later.
+                */
+            }
+        }
+
+        return presets
+            .OrderBy(
+                preset =>
+                    preset.Name)
+            .ThenBy(
+                preset =>
+                    preset.Id)
+            .ToList();
     }
 
     public bool DeleteMelodic(

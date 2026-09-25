@@ -14,9 +14,22 @@ export type MelodicSamplerSound = {
 
   sourceKind:
     | "library"
-    | "temporary";
+    | "temporary"
+    | "savedPreset";
+
+  sampleId?:
+    | number
+    | null;
 
   tempId:
+    | string
+    | null;
+
+  savedPresetId?:
+    | string
+    | null;
+
+  presetName?:
     | string
     | null;
 
@@ -35,6 +48,27 @@ export type MelodicSamplerSound = {
 
   loopCrossfadeMs?: number;
   loopAutoSmooth?: boolean;
+
+  /*
+    Saved melodic presets can hydrate the complete
+    instrument state when loaded.
+  */
+  rootMidiNote?: number;
+  transposeSemitones?: number;
+  fineTuneCents?: number;
+
+  voiceMode?:
+    | "mono"
+    | "poly";
+
+  glideMs?: number;
+  loopWhileHeld?: boolean;
+
+  attackMs?: number;
+  decayMs?: number;
+  sustainPercent?: number;
+  releaseMs?: number;
+  gainDb?: number;
 };
 
 type MelodicSamplerProps = {
@@ -44,6 +78,10 @@ type MelodicSamplerProps = {
 
   onOpenLab?:
     () => void;
+
+  onLoadPreset: (
+    sound: MelodicSamplerSound
+  ) => void;
 };
 
 const NOTE_NAMES = [
@@ -570,11 +608,15 @@ function MelodicSampler({
   sound,
   onBack,
   onOpenLab,
+  onLoadPreset,
 }: MelodicSamplerProps) {
   const [
     rootMidiNote,
     setRootMidiNote,
-  ] = useState(60);
+  ] = useState(
+    sound.rootMidiNote ??
+      60
+  );
 
   /*
     Global instrument tuning.
@@ -585,12 +627,18 @@ function MelodicSampler({
   const [
     transposeSemitones,
     setTransposeSemitones,
-  ] = useState(0);
+  ] = useState(
+    sound.transposeSemitones ??
+      0
+  );
 
   const [
     fineTuneCents,
     setFineTuneCents,
-  ] = useState(0);
+  ] = useState(
+    sound.fineTuneCents ??
+      0
+  );
 
   /*
     Like Ableton's Computer MIDI Keyboard:
@@ -611,7 +659,10 @@ function MelodicSampler({
     setVoiceMode,
   ] = useState<
     "mono" | "poly"
-  >("mono");
+  >(
+    sound.voiceMode ??
+      "mono"
+  );
 
   /*
     The melodic sampler behaves like a sustained
@@ -622,7 +673,10 @@ function MelodicSampler({
   const [
     loopWhileHeld,
     setLoopWhileHeld,
-  ] = useState(true);
+  ] = useState(
+    sound.loopWhileHeld ??
+      true
+  );
 
   const [
     loopAutoSmooth,
@@ -643,36 +697,96 @@ function MelodicSampler({
   const [
     glideMs,
     setGlideMs,
-  ] = useState(80);
+  ] = useState(
+    sound.glideMs ??
+      80
+  );
 
   const [
     attackMs,
     setAttackMs,
-  ] = useState(0);
+  ] = useState(
+    sound.attackMs ??
+      0
+  );
 
   const [
     decayMs,
     setDecayMs,
-  ] = useState(180);
+  ] = useState(
+    sound.decayMs ??
+      180
+  );
 
   const [
     sustainPercent,
     setSustainPercent,
-  ] = useState(100);
+  ] = useState(
+    sound.sustainPercent ??
+      100
+  );
 
   const [
     releaseMs,
     setReleaseMs,
-  ] = useState(120);
+  ] = useState(
+    sound.releaseMs ??
+      120
+  );
 
   const [
     gainDb,
     setGainDb,
-  ] = useState(0);
+  ] = useState(
+    sound.gainDb ??
+      0
+  );
 
   const [
     showInstrumentMenu,
     setShowInstrumentMenu,
+  ] = useState(false);
+
+  type MelodicPresetListItem = {
+    id: string;
+    name: string;
+    updatedAtUtc: string;
+    fileName: string;
+  };
+
+  const [
+    melodicPresets,
+    setMelodicPresets,
+  ] = useState<
+    MelodicPresetListItem[]
+  >([]);
+
+  const [
+    currentPresetId,
+    setCurrentPresetId,
+  ] = useState<
+    string | null
+  >(
+    sound.savedPresetId ??
+      null
+  );
+
+  const [
+    presetName,
+    setPresetName,
+  ] = useState(
+    sound.presetName ??
+      ""
+  );
+
+  const [
+    presetStatus,
+    setPresetStatus,
+  ] = useState("");
+
+  const [
+    presetBusy,
+    setPresetBusy,
   ] = useState(false);
 
   const [
@@ -713,6 +827,38 @@ function MelodicSampler({
     useRef<
       Promise<AudioBuffer> | null
     >(null);
+
+  /*
+    Crossfaded loop audio used to be rebuilt on every note.
+    Cache one prepared loop buffer instead of copying the whole
+    sample over and over while the instrument is being played.
+  */
+  const preparedLoopCacheRef =
+    useRef<{
+      sourceBuffer: AudioBuffer;
+      autoSmooth: boolean;
+      crossfadeMs: number;
+      requestedStart: number;
+      requestedEnd: number;
+      value: {
+        buffer: AudioBuffer;
+        loopStart: number;
+        loopEnd: number;
+      };
+    } | null>(null);
+
+  /*
+    Guard async note starts. A quick key-down/key-up can otherwise
+    release BEFORE the first decode finishes, leaving a hidden loop
+    voice that never receives its Note Off.
+  */
+  const pendingNoteOnRef =
+    useRef<
+      Map<number, number>
+    >(new Map());
+
+  const noteRequestSerialRef =
+    useRef(0);
 
   const midiAccessRef =
     useRef<MIDIAccess | null>(
@@ -1358,6 +1504,358 @@ function MelodicSampler({
     };
   };
 
+  const getPreparedSamplerLoop = (
+    sourceBuffer: AudioBuffer
+  ): PreparedSamplerLoop => {
+    const requestedStart =
+      sound.loopStartSeconds ??
+      0;
+
+    const requestedEnd =
+      sound.loopEndSeconds ??
+      sourceBuffer.duration;
+
+    const autoSmooth =
+      loopAutoSmoothRef.current;
+
+    const crossfadeMs =
+      loopCrossfadeMsRef.current;
+
+    const cached =
+      preparedLoopCacheRef.current;
+
+    if (
+      cached &&
+      cached.sourceBuffer === sourceBuffer &&
+      cached.autoSmooth === autoSmooth &&
+      cached.crossfadeMs === crossfadeMs &&
+      cached.requestedStart === requestedStart &&
+      cached.requestedEnd === requestedEnd
+    ) {
+      return cached.value;
+    }
+
+    const value =
+      prepareSamplerLoop(
+        sourceBuffer
+      );
+
+    preparedLoopCacheRef.current = {
+      sourceBuffer,
+      autoSmooth,
+      crossfadeMs,
+      requestedStart,
+      requestedEnd,
+      value,
+    };
+
+    return value;
+  };
+
+  const API_BASE =
+    "http://localhost:5085";
+
+  const refreshPresetList =
+    async () => {
+      try {
+        const response =
+          await fetch(
+            `${API_BASE}/api/melodic-presets`
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            `Could not load presets (${response.status}).`
+          );
+        }
+
+        const list =
+          (
+            await response.json()
+          ) as MelodicPresetListItem[];
+
+        setMelodicPresets(
+          list
+        );
+      } catch (error) {
+        console.error(
+          "Failed to list melodic presets:",
+          error
+        );
+      }
+    };
+
+  useEffect(() => {
+    void refreshPresetList();
+  }, []);
+
+  const savePreset =
+    async (
+      saveAsNew: boolean
+    ) => {
+      const cleanName =
+        presetName.trim();
+
+      if (!cleanName) {
+        setPresetStatus(
+          "Enter a preset name."
+        );
+
+        return;
+      }
+
+      setPresetBusy(true);
+      setPresetStatus("");
+
+      try {
+        let sourceKind:
+          | "library"
+          | "temporary"
+          | "savedPreset";
+
+        if (
+          sound.sourceKind ===
+          "savedPreset"
+        ) {
+          sourceKind =
+            "savedPreset";
+        } else {
+          sourceKind =
+            sound.sourceKind;
+        }
+
+        const response =
+          await fetch(
+            `${API_BASE}/api/melodic-presets`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                id:
+                  saveAsNew
+                    ? null
+                    : currentPresetId,
+
+                name:
+                  cleanName,
+
+                sourceKind,
+
+                sampleId:
+                  sound.sampleId ??
+                  null,
+
+                tempId:
+                  sound.tempId,
+
+                sourcePresetId:
+                  sound.savedPresetId ??
+                  null,
+
+                fileName:
+                  sound.fileName,
+
+                durationSeconds:
+                  sound.durationSeconds,
+
+                tags:
+                  sound.tags,
+
+                rootMidiNote,
+                transposeSemitones,
+                fineTuneCents,
+
+                voiceMode,
+                glideMs,
+                loopWhileHeld,
+
+                hasCustomLoop:
+                  sound.loopStartSeconds !==
+                    undefined &&
+                  sound.loopEndSeconds !==
+                    undefined,
+
+                loopStartSeconds:
+                  sound.loopStartSeconds ??
+                  0,
+
+                loopEndSeconds:
+                  sound.loopEndSeconds ??
+                  sound.durationSeconds,
+
+                loopAutoSmooth,
+                loopCrossfadeMs,
+
+                attackMs,
+                decayMs,
+                sustainPercent,
+                releaseMs,
+                gainDb,
+              }),
+            }
+          );
+
+        if (!response.ok) {
+          const message =
+            await response.text();
+
+          throw new Error(
+            message ||
+            `Save failed (${response.status}).`
+          );
+        }
+
+        const saved =
+          (await response.json()) as {
+            id: string;
+            name: string;
+          };
+
+        setCurrentPresetId(
+          saved.id
+        );
+
+        setPresetName(
+          saved.name
+        );
+
+        setPresetStatus(
+          saveAsNew
+            ? "✓ Saved new preset"
+            : "✓ Preset saved"
+        );
+
+        await refreshPresetList();
+      } catch (error) {
+        setPresetStatus(
+          error instanceof Error
+            ? error.message
+            : "Preset save failed."
+        );
+      } finally {
+        setPresetBusy(false);
+      }
+    };
+
+  const loadPreset =
+    async (
+      presetId: string
+    ) => {
+      if (!presetId) {
+        return;
+      }
+
+      stopAllNotes(
+        true
+      );
+
+      setPresetBusy(true);
+      setPresetStatus("");
+
+      try {
+        const response =
+          await fetch(
+            `${API_BASE}/api/melodic-presets/${presetId}`
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            `Could not load preset (${response.status}).`
+          );
+        }
+
+        const payload =
+          (await response.json()) as {
+            id: string;
+            name: string;
+            sound: MelodicSamplerSound;
+          };
+
+        /*
+          Controller returns a relative /api/... audio URL.
+          Make it absolute because the React dev server is on
+          a different port.
+        */
+        const loadedSound = {
+          ...payload.sound,
+          audioUrl:
+            payload.sound.audioUrl.startsWith(
+              "http"
+            )
+              ? payload.sound.audioUrl
+              : `${API_BASE}${payload.sound.audioUrl}`,
+        };
+
+        onLoadPreset(
+          loadedSound
+        );
+      } catch (error) {
+        setPresetStatus(
+          error instanceof Error
+            ? error.message
+            : "Preset load failed."
+        );
+
+        setPresetBusy(false);
+      }
+    };
+
+  const deleteCurrentPreset =
+    async () => {
+      if (!currentPresetId) {
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          `Delete preset "${presetName}"?`
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setPresetBusy(true);
+
+      try {
+        const response =
+          await fetch(
+            `${API_BASE}/api/melodic-presets/${currentPresetId}`,
+            {
+              method: "DELETE",
+            }
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            `Delete failed (${response.status}).`
+          );
+        }
+
+        setCurrentPresetId(
+          null
+        );
+
+        setPresetName("");
+        setPresetStatus(
+          "Preset deleted."
+        );
+
+        await refreshPresetList();
+      } catch (error) {
+        setPresetStatus(
+          error instanceof Error
+            ? error.message
+            : "Preset delete failed."
+        );
+      } finally {
+        setPresetBusy(false);
+      }
+    };
+
   /*
     Preload as soon as the sampler view opens,
     so MIDI/key presses take the fast path.
@@ -1368,6 +1866,12 @@ function MelodicSampler({
 
     loadingBufferRef.current =
       null;
+
+    preparedLoopCacheRef.current =
+      null;
+
+    pendingNoteOnRef.current
+      .clear();
 
     setLoopAutoSmooth(
       sound.loopAutoSmooth ??
@@ -1707,6 +2211,9 @@ function MelodicSampler({
   const stopAllNotes = (
     immediate = true
   ) => {
+    pendingNoteOnRef.current
+      .clear();
+
     for (
       const voice of
       polyVoicesRef.current
@@ -1841,6 +2348,11 @@ function MelodicSampler({
   const noteOff = (
     midiNote: number
   ) => {
+    pendingNoteOnRef.current
+      .delete(
+        midiNote
+      );
+
     markNoteInactive(
       midiNote
     );
@@ -1929,6 +2441,15 @@ function MelodicSampler({
       midiNote: number,
       velocity = 127
     ) => {
+      const requestId =
+        ++noteRequestSerialRef.current;
+
+      pendingNoteOnRef.current
+        .set(
+          midiNote,
+          requestId
+        );
+
       const context =
         getAudioContext();
 
@@ -1941,6 +2462,21 @@ function MelodicSampler({
 
       const buffer =
         await getDecodedBuffer();
+
+      if (
+        pendingNoteOnRef.current
+          .get(
+            midiNote
+          ) !==
+        requestId
+      ) {
+        return;
+      }
+
+      pendingNoteOnRef.current
+        .delete(
+          midiNote
+        );
 
       markNoteActive(
         midiNote
@@ -2008,7 +2544,7 @@ function MelodicSampler({
 
         const preparedLoop =
           loopWhileHeldRef.current
-            ? prepareSamplerLoop(
+            ? getPreparedSamplerLoop(
                 buffer
               )
             : {
@@ -2079,6 +2615,14 @@ function MelodicSampler({
             monoVoiceRef.current =
               null;
           }
+
+          try {
+            source.disconnect();
+            envelopeGain.disconnect();
+            outputGain.disconnect();
+          } catch {
+            // Already disconnected.
+          }
         };
 
         source.start();
@@ -2119,7 +2663,7 @@ function MelodicSampler({
 
       const preparedLoop =
         loopWhileHeldRef.current
-          ? prepareSamplerLoop(
+          ? getPreparedSamplerLoop(
               buffer
             )
           : {
@@ -2201,6 +2745,14 @@ function MelodicSampler({
             midiNote
           );
         }
+
+        try {
+          source.disconnect();
+          envelopeGain.disconnect();
+          outputGain.disconnect();
+        } catch {
+          // Already disconnected.
+        }
       };
 
       source.start();
@@ -2226,9 +2778,14 @@ function MelodicSampler({
           event.target as
             HTMLElement | null;
 
+        /*
+          Number/range controls should not disable the computer
+          MIDI keyboard after editing. Only suppress note shortcuts
+          when the user is actually typing text or using a select.
+        */
         if (
           target?.closest(
-            "input, textarea, select"
+            'textarea, select, input[type="text"], input[type="search"]'
           )
         ) {
           return;
@@ -2720,6 +3277,117 @@ function MelodicSampler({
         </div>
       </header>
 
+      <section className="melodic-preset-bar">
+        <select
+          value={
+            currentPresetId ??
+            ""
+          }
+          disabled={
+            presetBusy
+          }
+          onChange={(event) => {
+            const id =
+              event.target.value;
+
+            if (id) {
+              void loadPreset(
+                id
+              );
+            }
+          }}
+        >
+          <option value="">
+            Presets…
+          </option>
+
+          {melodicPresets.map(
+            (preset) => (
+              <option
+                key={
+                  preset.id
+                }
+                value={
+                  preset.id
+                }
+              >
+                {preset.name}
+              </option>
+            )
+          )}
+        </select>
+
+        <input
+          type="text"
+          value={
+            presetName
+          }
+          disabled={
+            presetBusy
+          }
+          placeholder="Preset name"
+          onChange={(event) => {
+            setPresetName(
+              event.target.value
+            );
+          }}
+        />
+
+        <button
+          type="button"
+          disabled={
+            presetBusy
+          }
+          onClick={() => {
+            void savePreset(
+              false
+            );
+          }}
+        >
+          {presetBusy
+            ? "Working…"
+            : currentPresetId
+              ? "Update Preset"
+              : "Save Preset"}
+        </button>
+
+        {currentPresetId && (
+          <button
+            type="button"
+            disabled={
+              presetBusy
+            }
+            onClick={() => {
+              void savePreset(
+                true
+              );
+            }}
+          >
+            Save As New
+          </button>
+        )}
+
+        {currentPresetId && (
+          <button
+            type="button"
+            disabled={
+              presetBusy
+            }
+            onClick={() => {
+              void deleteCurrentPreset();
+            }}
+          >
+            Delete
+          </button>
+        )}
+
+        {presetStatus && (
+          <span className="melodic-preset-status">
+            {presetStatus}
+          </span>
+        )}
+      </section>
+
       <section className="melodic-controls">
         <label className="melodic-control">
           <span>
@@ -3083,6 +3751,9 @@ function MelodicSampler({
                   loopAutoSmoothRef.current =
                     next;
 
+                  preparedLoopCacheRef.current =
+                    null;
+
                   setLoopAutoSmooth(
                     next
                   );
@@ -3161,6 +3832,9 @@ function MelodicSampler({
                   loopCrossfadeMsRef.current =
                     sound.loopCrossfadeMs ??
                     8;
+
+                  preparedLoopCacheRef.current =
+                    null;
 
                   glideMsRef.current =
                     80;
@@ -3420,6 +4094,9 @@ function MelodicSampler({
                 onChange={(next) => {
                   loopCrossfadeMsRef.current =
                     next;
+
+                  preparedLoopCacheRef.current =
+                    null;
 
                   setLoopCrossfadeMs(
                     next
