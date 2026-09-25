@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using SampleVault.Api.Data;
 using SampleVault.Api.Services;
+using SampleVault.Api.Infrastructure;
+using SampleVault.Api.Presets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +31,9 @@ builder.Services.AddSingleton<AutoTagger>();
 builder.Services.AddSingleton<WaveformService>();
 
 builder.Services.AddSingleton<AudioRenderService>();
+
+builder.Services.AddSingleton<SampleVaultStoragePaths>();
+builder.Services.AddSingleton<PresetFileStore>();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
