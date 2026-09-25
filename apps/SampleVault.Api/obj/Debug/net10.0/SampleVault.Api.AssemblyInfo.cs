@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SampleVault.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+15693a86629c550fd2cf3b22aa182d4f84726b77")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fcec9ac8108ad9b1138f57a95b2c0e866d41dcc5")]
 [assembly: System.Reflection.AssemblyProductAttribute("SampleVault.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SampleVault.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

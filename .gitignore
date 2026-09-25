@@ -13,3 +13,7 @@ obj/
 # Node later
 node_modules/
 dist/
+
+rack-assets/
+
+rack-cache/

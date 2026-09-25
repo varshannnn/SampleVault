@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SampleVault.Api.Data;
 
@@ -10,9 +11,11 @@ using SampleVault.Api.Data;
 namespace SampleVault.Api.Migrations
 {
     [DbContext(typeof(SampleVaultDbContext))]
-    partial class SampleVaultDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260831171821_AddSampleTags")]
+    partial class AddSampleTags
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
@@ -78,70 +81,6 @@ namespace SampleVault.Api.Migrations
                     b.ToTable("Samples");
                 });
 
-            modelBuilder.Entity("SampleVault.Api.Models.DrumRackPreset", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("DrumRackPresets");
-                });
-
-            modelBuilder.Entity("SampleVault.Api.Models.DrumRackPresetSlot", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("AudioSampleId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("DrumRackPresetId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<double>("DurationSeconds")
-                        .HasColumnType("REAL");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("FilePath")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("SlotIndex")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("SourceKind")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TagsJson")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AudioSampleId");
-
-                    b.HasIndex("DrumRackPresetId");
-
-                    b.ToTable("DrumRackPresetSlots");
-                });
-
             modelBuilder.Entity("SampleVault.Api.Models.Tag", b =>
                 {
                     b.Property<int>("Id")
@@ -170,28 +109,6 @@ namespace SampleVault.Api.Migrations
                         .HasForeignKey("TagsId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("SampleVault.Api.Models.DrumRackPresetSlot", b =>
-                {
-                    b.HasOne("SampleVault.Api.Models.AudioSample", "AudioSample")
-                        .WithMany()
-                        .HasForeignKey("AudioSampleId");
-
-                    b.HasOne("SampleVault.Api.Models.DrumRackPreset", "DrumRackPreset")
-                        .WithMany("Slots")
-                        .HasForeignKey("DrumRackPresetId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("AudioSample");
-
-                    b.Navigation("DrumRackPreset");
-                });
-
-            modelBuilder.Entity("SampleVault.Api.Models.DrumRackPreset", b =>
-                {
-                    b.Navigation("Slots");
                 });
 #pragma warning restore 612, 618
         }

@@ -12,4 +12,13 @@ public class SampleVaultDbContext : DbContext
     }
 
     public DbSet<AudioSample> Samples => Set<AudioSample>();
+
+    public DbSet<Tag> Tags => Set<Tag>();
+
+    public DbSet<DrumRackPreset> DrumRackPresets =>
+        Set<DrumRackPreset>();
+
+    public DbSet<DrumRackPresetSlot> DrumRackPresetSlots =>
+        Set<DrumRackPresetSlot>();
+
 }

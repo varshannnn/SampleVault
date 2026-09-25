@@ -23,4 +23,6 @@ public class AudioSample
     public bool IsFavorite { get; set; }
 
     public DateTime IndexedAt { get; set; } = DateTime.UtcNow;
+
+    public List<Tag> Tags { get; set; } = [];
 }
